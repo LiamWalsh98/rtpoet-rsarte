@@ -87,6 +87,50 @@ class RSARTEReader private constructor(private val resource: Resource) {
                     }
                 }
 
+
+
+//                is Model -> visitModel(eObj)
+//                is Artifact -> visitArtifact(eObj)
+//                is Enumeration -> visitEnumeration(eObj)
+//                is CallEvent -> visitCallEvent(eObj)
+//                is Connector -> visitConnector(eObj)
+//                is ConnectorEnd -> visitConnectorEnd(eObj)
+//                is Operation -> visitOperation(eObj)
+//                is Parameter -> visitParameter(eObj)
+//                is OpaqueBehavior -> visitOpaqueBehavior(eObj)
+//                is OpaqueExpression -> visitOpaqueExpression(eObj)
+//                is Vertex -> visitVertex(eObj)
+//                is Transition -> visitTransition(eObj)
+//                is Trigger -> visitTrigger(eObj)
+//                is StateMachine -> visitStateMachine(eObj)
+//
+//                is Class -> {
+//                    if (PapyrusRTUtils.isCapsule(eObj)) visitCapsule(eObj)
+//                    else visitClass(eObj)
+//                }
+//                is Package -> {
+//                    if (PapyrusRTUtils.isProtocol(eObj)) visitProtocol(eObj)
+//                    else visitPackage(eObj)
+//                }
+//                is Property -> {
+//                    if (PapyrusRTUtils.isCapsulePart(eObj)) visitCapsulePart(eObj)
+//                    else if (PapyrusRTUtils.isPort(eObj)) visitPort(eObj as Port)
+//                    else visitAttribute(eObj)
+//                }
+//
+//                is Type -> visitType(eObj)
+//
+//                is ArtifactProperties -> visitArtifactProperties(eObj)
+//                is AttributeProperties -> visitAttributeProperties(eObj)
+//                is CapsuleProperties -> visitCapsuleProperties(eObj)
+//                is PassiveClassProperties -> visitPassiveClassProperties(eObj)
+//                is EnumerationProperties -> visitEnumerationProperties(eObj)
+//                is OperationProperties -> visitOperationProperties(eObj)
+//                is ParameterProperties -> visitParameterProperties(eObj)
+//                is TypeProperties -> visitTypeProperties(eObj)
+
+
+
                 else -> throw RuntimeException("Unexpected element type ${eObj.eClass().name}")
             }
         }
@@ -120,7 +164,14 @@ class RSARTEReader private constructor(private val resource: Resource) {
                 PseudostateKind.JUNCTION_LITERAL -> RTPseudoState.junction(vertex.name).build()
                 PseudostateKind.ENTRY_POINT_LITERAL -> RTPseudoState.entryPoint(vertex.name).build()
                 PseudostateKind.EXIT_POINT_LITERAL -> RTPseudoState.exitPoint(vertex.name).build()
-                else -> throw RuntimeException("Unknown pseudosate kind ${vertex.kind}")
+                else -> {
+                    if (isRTHistoryState(vertex)) {
+                        RTPseudoState.history(vertex.name).build()
+                    }
+                    else {
+                        throw RuntimeException("Unknown pseudostate kind ${vertex.kind}")
+                    }
+                }
             }
 
         } else {

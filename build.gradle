@@ -23,11 +23,14 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib"
     implementation "ca.jahed.rtpoet:rtpoet:1.0-SNAPSHOT"
 
+    implementation group: 'org.osgi', name: 'org.osgi.service.prefs', version: '1.1.1'
+
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+
+
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
+    testImplementation fileTree(dir: 'libs', include: ['*.jar'])
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
-
-
-    compile fileTree(dir: 'libs', include: ['*.jar'])
 
 }
 
