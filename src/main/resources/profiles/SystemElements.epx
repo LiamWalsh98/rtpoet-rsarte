@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--xtools2_universal_type_manager-->
+<?com.ibm.xtools.emf.core.signature <signature id="com.ibm.xtools.uml.msl.profile" version="7.0.0"><feature description="" name="com.ibm.xtools.ruml.feature" url="" version="7.0.0"/></signature>?>
+<uml:Profile xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" xmlns:uml="http://www.eclipse.org/uml2/2.1.0/UML" xmi:id="_Zb6KkKzkEd2Mz6LWDsj4hg" name="SystemElements" metamodelReference="_Zb6KkqzkEd2Mz6LWDsj4hg">
+  <eAnnotations xmi:id="_Zb6KlqzkEd2Mz6LWDsj4hg" source="http://www.eclipse.org/uml2/2.0.0/UML">
+    <contents xmi:type="ecore:EPackage" xmi:id="_i5CzYazkEd2Mz6LWDsj4hg" name="SystemElements" nsURI="http:///schemas/SystemElements/_i5CzYKzkEd2Mz6LWDsj4hg/1" nsPrefix="SystemElements">
+      <eClassifiers xmi:type="ecore:EClass" xmi:id="_i5CzYqzkEd2Mz6LWDsj4hg" name="SystemProtocol">
+        <eAnnotations xmi:id="_i5CzY6zkEd2Mz6LWDsj4hg" source="http://www.eclipse.org/uml2/2.0.0/UML" references="_aLTAIKzkEd2Mz6LWDsj4hg"/>
+        <eStructuralFeatures xmi:type="ecore:EReference" xmi:id="_i5CzZKzkEd2Mz6LWDsj4hg" name="base_Collaboration" ordered="false" lowerBound="1">
+          <eType xmi:type="ecore:EClass" href="http://www.eclipse.org/uml2/2.1.0/UML#//Collaboration"/>
+        </eStructuralFeatures>
+      </eClassifiers>
+    </contents>
+  </eAnnotations>
+  <eAnnotations xmi:id="_i5CzdazkEd2Mz6LWDsj4hg" source="uml2.versions">
+    <details xmi:id="_i5CzdqzkEd2Mz6LWDsj4hg" key="1" value="7.5.1_20081107"/>
+  </eAnnotations>
+  <packageImport xmi:id="_Zb6KkazkEd2Mz6LWDsj4hg">
+    <eAnnotations xmi:id="_i5CzZqzkEd2Mz6LWDsj4hg" source="uml2.extensions">
+      <details xmi:id="_i5CzZ6zkEd2Mz6LWDsj4hg" key="addedInVersion" value="1"/>
+    </eAnnotations>
+    <importedPackage xmi:type="uml:Model" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#_0"/>
+  </packageImport>
+  <packageImport xmi:id="_Zb6KkqzkEd2Mz6LWDsj4hg">
+    <eAnnotations xmi:id="_i5CzaKzkEd2Mz6LWDsj4hg" source="uml2.extensions">
+      <details xmi:id="_i5CzaazkEd2Mz6LWDsj4hg" key="addedInVersion" value="1"/>
+    </eAnnotations>
+    <importedPackage xmi:type="uml:Model" href="pathmap://UML_METAMODELS/UML.metamodel.uml#_0"/>
+  </packageImport>
+  <packagedElement xmi:type="uml:Stereotype" xmi:id="_aLTAIKzkEd2Mz6LWDsj4hg" name="SystemProtocol">
+    <eAnnotations xmi:id="_cnTvkKzkEd2Mz6LWDsj4hg" source="uml2.extensions">
+      <details xmi:id="_cnTvkazkEd2Mz6LWDsj4hg" key="suppressed" value="true"/>
+      <details xmi:id="_i5CzaqzkEd2Mz6LWDsj4hg" key="addedInVersion" value="1"/>
+    </eAnnotations>
+    <ownedComment xmi:id="_db6cUKzkEd2Mz6LWDsj4hg" annotatedElement="_aLTAIKzkEd2Mz6LWDsj4hg">
+      <eAnnotations xmi:id="_i5Cza6zkEd2Mz6LWDsj4hg" source="uml2.extensions">
+        <details xmi:id="_i5CzbKzkEd2Mz6LWDsj4hg" key="addedInVersion" value="1"/>
+      </eAnnotations>
+      <body>&lt;p>&#xD;
+    This profile is internal for RT system libraries.&amp;nbsp; The elements identified within this profile package are used to&#xD;
+    tag elements within RT model libraries to facilitate&amp;nbsp;indentification of 'System Elements' from within the RT&#xD;
+    Tooling.&#xD;
+&lt;/p>&#xD;
+&lt;p>&#xD;
+    Note: This type of tagging was introduced/required when multiple language support was made available.&#xD;
+&lt;/p></body>
+    </ownedComment>
+    <ownedAttribute xmi:id="_fJSkIqzkEd2Mz6LWDsj4hg" name="base_Collaboration" association="_fJSkIKzkEd2Mz6LWDsj4hg">
+      <eAnnotations xmi:id="_i5CzbazkEd2Mz6LWDsj4hg" source="uml2.extensions">
+        <details xmi:id="_i5CzbqzkEd2Mz6LWDsj4hg" key="addedInVersion" value="1"/>
+      </eAnnotations>
+      <type xmi:type="uml:Class" href="pathmap://UML_METAMODELS/UML.metamodel.uml#Collaboration"/>
+    </ownedAttribute>
+  </packagedElement>
+  <packagedElement xmi:type="uml:Extension" xmi:id="_fJSkIKzkEd2Mz6LWDsj4hg" name="Collaboration_SystemProtocol" memberEnd="_fJSkIazkEd2Mz6LWDsj4hg _fJSkIqzkEd2Mz6LWDsj4hg">
+    <eAnnotations xmi:id="_i5Czb6zkEd2Mz6LWDsj4hg" source="uml2.extensions">
+      <details xmi:id="_i5CzcKzkEd2Mz6LWDsj4hg" key="addedInVersion" value="1"/>
+    </eAnnotations>
+    <ownedEnd xmi:type="uml:ExtensionEnd" xmi:id="_fJSkIazkEd2Mz6LWDsj4hg" name="extension_SystemProtocol" type="_aLTAIKzkEd2Mz6LWDsj4hg" aggregation="composite" association="_fJSkIKzkEd2Mz6LWDsj4hg">
+      <eAnnotations xmi:id="_i5CzcazkEd2Mz6LWDsj4hg" source="uml2.extensions">
+        <details xmi:id="_i5CzcqzkEd2Mz6LWDsj4hg" key="addedInVersion" value="1"/>
+      </eAnnotations>
+    </ownedEnd>
+  </packagedElement>
+  <profileApplication xmi:id="_Zb6Kk6zkEd2Mz6LWDsj4hg">
+    <eAnnotations xmi:id="_Zb6KlKzkEd2Mz6LWDsj4hg" source="http://www.eclipse.org/uml2/2.0.0/UML">
+      <references xmi:type="ecore:EPackage" href="pathmap://UML2_MSL_PROFILES/ProfileBase.epx#_IfFYQMmBEdqBcN1R6EvWUw?ProfileBase/ProfileBase?"/>
+    </eAnnotations>
+    <eAnnotations xmi:id="_i5Czc6zkEd2Mz6LWDsj4hg" source="uml2.extensions">
+      <details xmi:id="_i5CzdKzkEd2Mz6LWDsj4hg" key="addedInVersion" value="1"/>
+    </eAnnotations>
+    <appliedProfile href="pathmap://UML2_MSL_PROFILES/ProfileBase.epx#_bFUAMdWLEdiy4IqP8whjFA?ProfileBase?"/>
+  </profileApplication>
+</uml:Profile>
