@@ -1,17 +1,19 @@
 package ca.jahed.rtpoet.rsarte
 
 import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary
+import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary.getSystemProtocol
+import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary.isModelRoot
+import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary.isSystemProtocol
 import ca.jahed.rtpoet.rsarte.rts.protocols.RTExceptionProtocol
 import ca.jahed.rtpoet.rsarte.rts.protocols.RTExternalProtocol
+import ca.jahed.rtpoet.rsarte.utils.RSARTEUtils
 import ca.jahed.rtpoet.rtmodel.*
-import ca.jahed.rtpoet.rtmodel.cppproperties.*
 import ca.jahed.rtpoet.rtmodel.rts.protocols.RTFrameProtocol
 import ca.jahed.rtpoet.rtmodel.rts.protocols.RTLogProtocol
 import ca.jahed.rtpoet.rtmodel.rts.protocols.RTTimingProtocol
 import ca.jahed.rtpoet.rtmodel.sm.*
 import ca.jahed.rtpoet.rtmodel.types.RTType
-import com.ibm.xtools.uml.rt.core.RTFactory
-import com.ibm.xtools.uml.rt.core.internal.util.UMLRTProfile.*
+import com.sun.deploy.net.protocol.ProtocolType
 
 import org.eclipse.emf.common.util.URI
 import org.eclipse.emf.ecore.EClassifier
@@ -64,32 +66,70 @@ class RSARTEReader private constructor(private val resource: Resource) {
                 is Parameter -> visitParameter(eObj)
                 is Port -> visitPort(eObj)
                 is Vertex -> visitVertex(eObj)
+                is Connector -> visitConnector(eObj)
+                is ConnectorEnd -> visitConnectorEnd(eObj)
+
                 is Transition -> visitTransition(eObj)
                 is Trigger -> visitTrigger(eObj)
                 is StateMachine -> visitStateMachine(eObj)
+                is Interaction -> visitInteraction(eObj)
+
+                is CallEvent -> visitCallEvent(eObj)
 
                 is Package -> {
                     when {
-                        eObj.eContainer() == null -> visitModel(eObj) // package with no parent = model package
-                        isProtocolContainer(eObj) -> visitProtocol(eObj)
+                        isModelRoot(eObj) -> visitModel(eObj) // package with no parent = model package
+                        UMLRTProfile.isProtocolContainer(eObj) -> visitProtocol(eObj)
                         else -> visitPackage(eObj)
                     }
                 }
                 is Class -> {
-                    if (isCapsule(eObj)) visitCapsule(eObj)
+                    if (UMLRTProfile.isCapsule(eObj)) visitCapsule(eObj)
                     else visitClass(eObj)
                 }
                 is Property -> {
                     when {
-                        isRTPort(eObj) -> visitPort(eObj as Port)
-                        isCapsulePart(eObj) -> visitCapsulePart(eObj)
+                        UMLRTProfile.isRTPort(eObj) -> visitPort(eObj as Port)
+                        UMLRTProfile.isCapsulePart(eObj) -> visitCapsulePart(eObj)
                         else -> visitAttribute(eObj)
                     }
                 }
 
+
                 else -> throw RuntimeException("Unexpected element type ${eObj.eClass().name}")
             }
         }
+    }
+
+    private fun visitCallEvent(event: CallEvent): RTSignal {
+        //todo: maybe handle system signals? (is this actually necessary?)
+//        if (RSARTELibrary.isSystemSignal(event))
+//            return RSARTELibrary.getSystemSignal(event)
+
+        val operation = event.operation!!
+        val builder = RTSignal.builder(operation.name)
+        operation.ownedParameters.forEach { builder.parameter(visit(it) as RTParameter) }
+        return builder.build()
+    }
+
+    private fun visitConnector(connector: Connector): RTConnector {
+        return RTConnector.builder(
+            visit(connector.ends[0]) as RTConnectorEnd,
+            visit(connector.ends[1]) as RTConnectorEnd).build()
+    }
+
+    private fun visitConnectorEnd(connectorEnd: ConnectorEnd): RTConnectorEnd {
+        val part = if (connectorEnd.partWithPort != null) visit(connectorEnd.partWithPort) as RTCapsulePart else null
+        return RTConnectorEnd(visit(connectorEnd.role as Port) as RTPort, part)
+    }
+
+    private fun visitInteraction(interaction: Interaction): RTOperation {
+        val builder = RTOperation.builder(interaction.name)
+
+        interaction.fragments
+        interaction.messages
+
+        return builder.build()
     }
 
     private fun visitTransition(transition: Transition): RTTransition {
@@ -98,7 +138,9 @@ class RSARTEReader private constructor(private val resource: Resource) {
 
         if (transition.effect != null) builder.action(visit(transition.effect) as RTAction)
         if (transition.guard != null) builder.guard(visit(transition.guard.specification) as RTAction)
-        transition.triggers.forEach { builder.trigger(visit(it) as RTTrigger) }
+
+        // todo: handle triggers
+//        transition.triggers.forEach { builder.trigger(visit(it) as RTTrigger) }
 
         return builder.build()
     }
@@ -115,12 +157,19 @@ class RSARTEReader private constructor(private val resource: Resource) {
             return when (vertex.kind) {
                 PseudostateKind.INITIAL_LITERAL -> RTPseudoState.initial(vertex.name).build()
                 PseudostateKind.CHOICE_LITERAL -> RTPseudoState.choice(vertex.name).build()
-                PseudostateKind.SHALLOW_HISTORY_LITERAL -> RTPseudoState.history(vertex.name).build()
+//                PseudostateKind.SHALLOW_HISTORY_LITERAL -> RTPseudoState.history(vertex.name).build()
                 PseudostateKind.JOIN_LITERAL -> RTPseudoState.join(vertex.name).build()
                 PseudostateKind.JUNCTION_LITERAL -> RTPseudoState.junction(vertex.name).build()
                 PseudostateKind.ENTRY_POINT_LITERAL -> RTPseudoState.entryPoint(vertex.name).build()
                 PseudostateKind.EXIT_POINT_LITERAL -> RTPseudoState.exitPoint(vertex.name).build()
-                else -> throw RuntimeException("Unknown pseudosate kind ${vertex.kind}")
+                else -> {
+                    if (UMLRTProfile.isRTHistoryState(vertex)) {
+                        RTPseudoState.history(vertex.name).build()
+                    }
+                    else {
+                        throw RuntimeException("Unknown pseudostate kind ${vertex.kind}")
+                    }
+                }
             }
 
         } else {
@@ -162,20 +211,20 @@ class RSARTEReader private constructor(private val resource: Resource) {
     }
 
     private fun visitPort(port: Port): RTPort {
-        val builder = RTPort.builder(port.name, visit(port.type) as RTProtocol)
+        val builder = RTPort.builder(port.name, visit(port.type.eContainer()) as RTProtocol)
             .replication(port.upper)
 
-        if (isWired(port)) builder.wired()
-        if (isConjugated(port)) builder.conjugate()
-        if (isNotification(port, null)) builder.notification() // ignoring context hint
-        if (isPublish(port)) builder.publish()
+        if (UMLRTProfile.isWired(port)) builder.wired()
+        if (UMLRTProfile.isConjugated(port)) builder.conjugate()
+        if (UMLRTProfile.isNotification(port, null)) builder.notification() // ignoring context hint
+        if (UMLRTProfile.isPublish(port)) builder.publish()
         if (port.isBehavior) builder.behaviour()
         if (port.isService) builder.service()
-        builder.registrationOverride(getRegistrationOverride(port, null)) // ignoring context hint
+        builder.registrationOverride(UMLRTProfile.getRegistrationOverride(port, null)) // ignoring context hint
 
-        when (getRegistration(port, null)) { // ignoring context hint
-            RTPortRegistrationKind_Application -> builder.appRegistration()
-            RTPortRegistrationKind_Automatic_Locked -> builder.autoLockedRegistration()
+        when (UMLRTProfile.getRegistration(port, null)) { // ignoring context hint
+            UMLRTProfile.RTPortRegistrationKind_Application -> builder.appRegistration()
+            UMLRTProfile.RTPortRegistrationKind_Automatic_Locked -> builder.autoLockedRegistration()
             else -> builder.autoRegistration()
         }
 
@@ -228,24 +277,51 @@ class RSARTEReader private constructor(private val resource: Resource) {
 
     private fun visitCapsule(klass: Class): RTCapsule {
         val builder = RTCapsule.builder(klass.name)
+
+        klass.attributes.forEach {
+            when (it) {
+                is Port -> builder.port(visit(it) as RTPort)
+                is Property -> builder.part(visit(it) as RTCapsulePart)
+                // todo: verify attributes function properly
+            }
+        }
+
+        klass.ownedConnectors.forEach { builder.connector(visit(it) as RTConnector) }
+
+        klass.ownedBehaviors.forEach {
+            when (it) {
+                is StateMachine -> builder.statemachine(visit(it) as RTStateMachine)
+                is Interaction -> builder.operation(visit(it) as RTOperation)
+            }
+        }
+
         return builder.build()
     }
 
     private fun visitProtocol(protocol: Package): RTProtocol {
         val builder = RTProtocol.builder(protocol.name)
+        val protocolType = protocol.packagedElements.first { it is Collaboration }
 
-        if (isSystemProtocol(protocol)) {
-            return when (protocol.name) {
-                "Log" -> RTLogProtocol
-                "Timing" -> RTTimingProtocol
-                "Frame" -> RTFrameProtocol
-                "Exception" -> RTExceptionProtocol
-                else -> RTExternalProtocol
+        if (UMLRTProfile.isSystemProtocol(protocolType)) {
+            return RSARTEUtils.getSystemProtocol(protocolType as Collaboration)
+        }
+
+        val umlProfile = RSARTELibrary.getProfile("UMLRealTime")
+
+        val operationMap = mutableMapOf<Operation, RTSignal>()
+        protocol.packagedElements.filterIsInstance<CallEvent>().forEach {
+            operationMap[it.operation] = visit(it) as RTSignal
+            val stereotypes = it.appliedStereotypes
+            stereotypes.forEach { type ->
+                when (type) {
+                    // todo: it seems in/out events may be depicted by both stereotypes being present; verify this
+                    umlProfile.getMember("InEvent") -> builder.input(operationMap[it.operation]!!)
+                    umlProfile.getMember("OutEvent") -> builder.output(operationMap[it.operation]!!)
+                    else -> throw RuntimeException("Could not find signal type (In or Out) ${it.eClass().name}")
+                }
             }
         }
 
-
-        // todo: finish protocol
         return builder.build()
     }
 
@@ -264,54 +340,26 @@ class RSARTEReader private constructor(private val resource: Resource) {
     private fun visitModel(pkg: Package): RTModel {
         val builder = RTModel.builder(pkg.name)
 
-
-//        val capsule = RTCapsule
-
-//        val topName = model.getEAnnotation("UMLRT_Default_top")?.details?.get("top_name") ?: "Top"
-//        val topClass = EMFUtils.getObjectByType(content,
-//            UMLPackage.Literals.CLASS, mapOf(Pair("name", topName)))!! as Class
-
-//        val builder = RTModel.builder(model.name, visit(topClass) as RTCapsule)
-
+        // todo: specify which capsule is "top"
 
         pkg.packagedElements.forEach {
             when (it) {
-//                is Class -> builder.klass(visit(it) as RTClass)
-//                is Enumeration -> builder.enumeration(visit(it) as RTEnumeration)
-                is Class -> if (isCapsule(it)) builder.capsule(visit(it) as RTCapsule)
+                is Class ->
+                    if (UMLRTProfile.isCapsule(it))
+                        builder.capsule(visit(it) as RTCapsule)
                     else builder.klass(visit(it) as RTClass)
-                is Package -> if (isProtocolContainer(it)) builder.protocol(visit(it) as RTProtocol)
+                is Package -> if (UMLRTProfile.isProtocolContainer(it)) builder.protocol(visit(it) as RTProtocol)
                     else builder.pkg(visit(it) as RTPackage)
             }
         }
 
-
-//        val sourceCapsule = RTFactory.CapsuleFactory.createCapsule()
         return builder.build()
     }
 
     private fun visitPackage(pkg: Package): RTPackage {
         val rtPkg = RTPackage(pkg.name)
-
         return rtPkg
     }
+
+
 }
-
-
-
-// ownedAttribute   uml:Port
-
-// type             uml:Collaboration
-
-// ownedBehaviour   uml:StateMachine
-//                  uml:Interaction
-
-// subvertex        uml:Pseudostate
-
-// effect           uml:OpaqueBehaviour
-
-// fragment         uml:CombinedFragment
-
-// specification    uml:OpaqueExpression
-
-// minint           uml:LiteralInteger
