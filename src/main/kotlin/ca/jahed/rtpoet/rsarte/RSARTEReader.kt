@@ -1,19 +1,11 @@
 package ca.jahed.rtpoet.rsarte
 
 import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary
-import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary.getSystemProtocol
 import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary.isModelRoot
-import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary.isSystemProtocol
-import ca.jahed.rtpoet.rsarte.rts.protocols.RTExceptionProtocol
-import ca.jahed.rtpoet.rsarte.rts.protocols.RTExternalProtocol
 import ca.jahed.rtpoet.rsarte.utils.RSARTEUtils
 import ca.jahed.rtpoet.rtmodel.*
-import ca.jahed.rtpoet.rtmodel.rts.protocols.RTFrameProtocol
-import ca.jahed.rtpoet.rtmodel.rts.protocols.RTLogProtocol
-import ca.jahed.rtpoet.rtmodel.rts.protocols.RTTimingProtocol
 import ca.jahed.rtpoet.rtmodel.sm.*
 import ca.jahed.rtpoet.rtmodel.types.RTType
-import com.sun.deploy.net.protocol.ProtocolType
 
 import org.eclipse.emf.common.util.URI
 import org.eclipse.emf.ecore.EClassifier
@@ -89,11 +81,12 @@ class RSARTEReader private constructor(private val resource: Resource) {
                 }
                 is Property -> {
                     when {
-                        UMLRTProfile.isRTPort(eObj) -> visitPort(eObj as Port)
                         UMLRTProfile.isCapsulePart(eObj) -> visitCapsulePart(eObj)
                         else -> visitAttribute(eObj)
                     }
                 }
+
+                is PrimitiveType -> visitType(eObj)
 
 
                 else -> throw RuntimeException("Unexpected element type ${eObj.eClass().name}")
@@ -101,10 +94,19 @@ class RSARTEReader private constructor(private val resource: Resource) {
         }
     }
 
+    private fun visitType(type: Type): RTType {
+        return when (type) {
+            is Enumeration -> visit(type) as RTEnumeration
+            is Class -> if (RSARTEUtils.isCapsule(type)) visit(type) as RTCapsule else visit(type) as RTClass
+            is Collaboration -> visit(RSARTEUtils.getProtocol(type)!!) as RTProtocol
+            else -> RSARTELibrary.getType(type.name)
+        }
+    }
+
     private fun visitCallEvent(event: CallEvent): RTSignal {
-        //todo: maybe handle system signals? (is this actually necessary?)
-//        if (RSARTELibrary.isSystemSignal(event))
-//            return RSARTELibrary.getSystemSignal(event)
+        // todo: !!! maybe handle system signals? (is this actually necessary?)
+        if (RSARTELibrary.isSystemSignal(event))
+            return RSARTELibrary.getSystemSignal(event)
 
         val operation = event.operation!!
         val builder = RTSignal.builder(operation.name)
@@ -136,13 +138,20 @@ class RSARTEReader private constructor(private val resource: Resource) {
         val builder = RTTransition.builder(visit(transition.source) as RTGenericState,
             visit(transition.target) as RTGenericState)
 
-        if (transition.effect != null) builder.action(visit(transition.effect) as RTAction)
+        if (transition.effect != null) {
+            val action = visit(transition.effect) as RTAction
+            action.name = transition.effect.name
+            builder.action(action)
+        }
         if (transition.guard != null) builder.guard(visit(transition.guard.specification) as RTAction)
 
         // todo: handle triggers
-//        transition.triggers.forEach { builder.trigger(visit(it) as RTTrigger) }
+        transition.triggers.forEach { builder.trigger(visit(it) as RTTrigger) }
 
-        return builder.build()
+        val build = builder.build()
+        build.name = transition.name
+
+        return build
     }
 
     private fun visitTrigger(trigger: Trigger): RTTrigger {
@@ -197,8 +206,20 @@ class RSARTEReader private constructor(private val resource: Resource) {
         val builder = RTStateMachine.builder()
         stateMachine.regions[0].subvertices.forEach { builder.state(visit(it) as RTGenericState) }
         stateMachine.regions[0].transitions.forEach { builder.transition(visit(it) as RTTransition) }
-        return builder.build()
+
+        val build = builder.build()
+        build.name = stateMachine.name
+
+        return build
     }
+
+//    private fun visitState(state : State) : RTState {
+//        val builder = RTStateBuilder(state.name, )
+//    }
+//
+//    private fun visitPseudostate(state : Pseudostate) : RTPseudoState {
+//
+//    }
 
     private fun visitCapsulePart(part: Property): RTCapsulePart {
         val builder = RTCapsulePart.builder(part.name, visit(part.type) as RTCapsule)
@@ -238,9 +259,20 @@ class RSARTEReader private constructor(private val resource: Resource) {
     }
 
     private fun visitParameter(parameter: Parameter): RTParameter {
+
+//        val builder : RTParameterBuilder
+//        // todo: handle null types of system protocols
+//        if (parameter.type == null){
+//            builder = RTParameter.builder(parameter.name, RTNullType())
+//                .replication(parameter.upper)
+//        }
+//        else{
         val builder = RTParameter.builder(parameter.name, visit(parameter.type) as RTType)
-            .replication(parameter.upper)
+                .replication(parameter.upper)
+//        }
         return builder.build()
+
+
     }
 
     private fun visitOpaqueBehavior(behavior: OpaqueBehavior): RTAction {
@@ -281,7 +313,10 @@ class RSARTEReader private constructor(private val resource: Resource) {
         klass.attributes.forEach {
             when (it) {
                 is Port -> builder.port(visit(it) as RTPort)
-                is Property -> builder.part(visit(it) as RTCapsulePart)
+                is Property -> when {
+                    UMLRTProfile.isCapsulePart(it) -> builder.part(visit(it) as RTCapsulePart)
+                    else -> builder.attribute(visit(it) as RTAttribute)
+                }
                 // todo: verify attributes function properly
             }
         }
@@ -314,7 +349,8 @@ class RSARTEReader private constructor(private val resource: Resource) {
             val stereotypes = it.appliedStereotypes
             stereotypes.forEach { type ->
                 when (type) {
-                    // todo: it seems in/out events may be depicted by both stereotypes being present; verify this
+                    // todo: handle in/out events by checking for duplicate events with both "in" and "out"
+                        // post-process this by adding them to rtpoet inOutSignals list
                     umlProfile.getMember("InEvent") -> builder.input(operationMap[it.operation]!!)
                     umlProfile.getMember("OutEvent") -> builder.output(operationMap[it.operation]!!)
                     else -> throw RuntimeException("Could not find signal type (In or Out) ${it.eClass().name}")
