@@ -7,14 +7,19 @@ import ca.jahed.rtpoet.rtmodel.sm.RTPseudoState
 import ca.jahed.rtpoet.rtmodel.sm.RTState
 import ca.jahed.rtpoet.rtmodel.sm.RTStateMachine
 import ca.jahed.rtpoet.rtmodel.sm.RTTransition
+import ca.jahed.rtpoet.rtmodel.types.primitivetype.RTInteger
+import ca.jahed.rtpoet.visualizer.RTVisualizer
 import org.eclipse.emf.common.util.URI
 import org.eclipse.emf.ecore.resource.Resource
-import ca.jahed.rtpoet.rtmodel.types.primitivetype.RTInteger
-
-import org.junit.jupiter.api.Test
-import ca.jahed.rtpoet.visualizer.RTVisualizer
+import org.eclipse.emf.ecore.resource.ResourceSet
+import org.eclipse.emf.ecore.resource.impl.ResourceSetImpl
 import org.eclipse.emf.ecore.xmi.XMIResource
+import org.eclipse.emf.ecore.xmi.impl.XMIResourceFactoryImpl
+import org.junit.jupiter.api.Test
 import java.io.File
+import java.io.IOException
+import java.util.*
+
 
 class TestLib {
 
@@ -134,5 +139,48 @@ class TestLib {
         saveModel(pingerPonger())
     }
 
+    @Test
+    fun ConvertModelToPapyrusRT() {
+        val rsarteModel = loadResourceModel("CPPModel.emx")
+        val rtModel = RSARTEReader.read(rsarteModel)
+
+        rtModel.save("output/CPPModel.rtmodel")
+
+
+//        PapyrusRTWriter.write("output/CPPModel.uml", rtModel)
+    }
+
+    @Test
+    fun ReadAndWriteRSRATEModel() {
+        val rsarteModel = loadResourceModel("CPPModel.emx")
+        val rtModel = RSARTEReader.read(rsarteModel)
+
+
+
+        RSARTEWriter.write("output/CPPModelGenerated.emx", rtModel)
+    }
+
+
+    @Test
+    fun RemoveModelID() {
+
+        var resource = loadResourceModel("CPPModel.emx")
+
+        try {
+            (resource as XMIResource).eObjectToIDMap.clear()
+            resource.save(null)
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
+
+//        val reg = Resource.Factory.Registry.INSTANCE
+//        val m = reg.extensionToFactoryMap
+//        m["key"] = XMIResourceFactoryImpl()
+//        val resSet: ResourceSet = ResourceSetImpl()
+//        val saveResource: Resource = resSet.createResource(URI.createFileURI("CPPModel_mod.emx"))
+//        saveResource.contents.add(resource.contents[0])
+//        saveResource.save(Collections.EMPTY_MAP)
+
+    }
 
 }

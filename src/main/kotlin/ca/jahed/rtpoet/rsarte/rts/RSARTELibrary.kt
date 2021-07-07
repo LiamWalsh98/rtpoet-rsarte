@@ -1,35 +1,38 @@
 package ca.jahed.rtpoet.rsarte.rts
 
+import ca.jahed.rtpoet.rsarte.rts.primitivetype.*
+import ca.jahed.rtpoet.rsarte.UMLRTProfile
+import ca.jahed.rtpoet.rsarte.rts.protocols.RTExceptionProtocol
+import ca.jahed.rtpoet.rsarte.rts.protocols.RTExternalProtocol
 import ca.jahed.rtpoet.rtmodel.rts.RTLibrary
 import ca.jahed.rtpoet.rtmodel.rts.RTSystemSignal
 import ca.jahed.rtpoet.rtmodel.rts.classes.RTSystemClass
+import ca.jahed.rtpoet.rtmodel.rts.protocols.RTFrameProtocol
+import ca.jahed.rtpoet.rtmodel.rts.protocols.RTLogProtocol
 import ca.jahed.rtpoet.rtmodel.rts.protocols.RTSystemProtocol
+import ca.jahed.rtpoet.rtmodel.rts.protocols.RTTimingProtocol
 import ca.jahed.rtpoet.rtmodel.types.RTType
-import ca.jahed.rtpoet.rtmodel.types.primitivetype.RTPrimitiveType
+import ca.jahed.rtpoet.rtmodel.types.primitivetype.*
 import com.ibm.xtools.uml.msl.internal.util.UML2Constants.URI_DEFAULT_PROFILE
-import com.ibm.xtools.uml.rt.core.internal.l10n.ResourceManager.UMLRealTime
 import com.ibm.xtools.umlnotation.UmlnotationPackage
-import com.ibm.xtools.umldt.rt.cpp.core.*
 import org.eclipse.emf.common.util.URI
 import org.eclipse.emf.ecore.resource.ResourceSet
 import org.eclipse.emf.ecore.resource.impl.ResourceSetImpl
 import org.eclipse.emf.ecore.util.EcoreUtil
-import org.eclipse.emf.ecore.xmi.impl.XMIResourceFactoryImpl
 import org.eclipse.uml2.uml.*
 import org.eclipse.uml2.uml.internal.resource.UMLResourceFactoryImpl
-import org.eclipse.uml2.uml.resources.*
-import org.eclipse.uml2.uml.util.UMLUtil
 import java.net.URL
 
 
 object RSARTELibrary : RTLibrary {
     private val pathMap = mutableMapOf<String, URL>()
     private val profiles = mutableMapOf<String, Profile>()
-//    private val protocols = mutableMapOf<String, ProtocolContainer>()
-//    private val classes = mutableMapOf<String, Class>()
-//    private val types = mutableMapOf<String, PrimitiveType>()
-//    private val events = mutableMapOf<ProtocolContainer, MutableMap<String, MessageEvent>>()
-//    private val signals = mutableMapOf<RTSystemSignal, MessageEvent>()
+    private val models = mutableMapOf<String, Model>()
+    private val protocols = mutableMapOf<String, Package>()
+    private val classes = mutableMapOf<String, Class>()
+    private val types = mutableMapOf<String, PrimitiveType>()
+    private val events = mutableMapOf<Package, MutableMap<String, MessageEvent>>()
+    private val signals = mutableMapOf<RTSystemSignal, MessageEvent>()
 
     fun createResourceSet(): ResourceSetImpl {
         val resourceSet = ResourceSetImpl()
@@ -75,12 +78,14 @@ object RSARTELibrary : RTLibrary {
         pathMap["pathmap://UML2_MSL_PROFILES/ProfileBase.epx"] =
             javaClass.classLoader.getResource("profiles/ProfileBase.epx")!!
 
-
         pathMap["platform:/plugin/com.ibm.xtools.umldt.rt.cpp.core/libraries/RTClasses.emx"] =
             javaClass.classLoader.getResource("libraries/RTClasses.emx")!!
 
+        pathMap["platform:/plugin/com.ibm.xtools.umldt.rt.cpp.core/libraries/CppPrimitiveDatatypes.emx"] =
+            javaClass.classLoader.getResource("libraries/CppPrimitiveDatatypes.emx")!!
 
-
+        pathMap["platform:/plugin/com.ibm.xtools.umldt.rt.cpp.core/libraries/RTComponents.emx"] =
+            javaClass.classLoader.getResource("libraries/RTComponents.emx")!!
 
 
 
@@ -100,6 +105,9 @@ object RSARTELibrary : RTLibrary {
         resourceSet.packageRegistry["http://www.eclipse.org/uml2/2.1.0/UML"] = UMLPackage.eINSTANCE
 
 //        resourceSet.packageRegistry["platform:/plugin/com.ibm.xtools.umldt.rt.cpp.core/libraries/RTClasses.emx"] = UMLPackage.eINSTANCE
+//        resourceSet.packageRegistry["platform:/plugin/com.ibm.xtools.umldt.rt.cpp.core/libraries/CppPrimitiveDatatypes.emx"] = UMLPackage.eINSTANCE
+//        resourceSet.packageRegistry["platform:/plugin/com.ibm.xtools.umldt.rt.cpp.core/libraries/RTComponents.emx"] = UMLPackage.eINSTANCE
+
 
         resourceSet.packageRegistry[UmlnotationPackage.eNS_URI] = UmlnotationPackage.eINSTANCE
 
@@ -110,9 +118,9 @@ object RSARTELibrary : RTLibrary {
         pathMap.keys.forEach { resourceSet.getResource(URI.createURI(it), true) }
 
         loadProfiles(resourceSet)
-//        loadClasses(resourceSet)
-//        loadTypes(resourceSet)
-//        loadProtocols(resourceSet)
+        loadClasses(resourceSet)
+        loadTypes(resourceSet)
+        loadProtocols(resourceSet)
         // todo: implement the above functions
 
         EcoreUtil.resolveAll(resourceSet)
@@ -127,6 +135,66 @@ object RSARTELibrary : RTLibrary {
             }
         }
     }
+
+    private fun loadTypes(resourceSet: ResourceSet) {
+        resourceSet.resources.forEach { resource ->
+            EcoreUtil.getObjectsByType<Model>(resource.contents,
+                UMLPackage.Literals.MODEL).forEach { model ->
+                EcoreUtil.getObjectsByType<PrimitiveType>(model.packagedElements,
+                    UMLPackage.Literals.PRIMITIVE_TYPE).forEach {
+                    types[it.name] = it
+                }
+            }
+        }
+    }
+
+    private fun loadClasses(resourceSet: ResourceSet) {
+        resourceSet.resources.forEach { resource ->
+            EcoreUtil.getObjectsByType<Model>(resource.contents,
+                UMLPackage.Literals.MODEL).forEach { model ->
+                EcoreUtil.getObjectsByType<Class>(model.packagedElements,
+                    UMLPackage.Literals.CLASS).forEach {
+                    classes[it.name] = it
+                }
+            }
+        }
+    }
+
+    private fun loadProtocols(resourceSet: ResourceSet) {
+        resourceSet.resources.forEach { resource ->
+            EcoreUtil.getObjectsByType<Package>(resource.contents,
+                UMLPackage.Literals.PACKAGE).forEach { element ->
+                    element.packagedElements.filterIsInstance<Package>().forEach { protocol ->
+                        // todo: differentiate packages from standard.uml and RTClasses.emx
+                        if (UMLRTProfile.isProtocolContainer(protocol)) {
+
+//                            RSARTELibrary.protocols[protocol.name] = protocol
+                            (protocol.packagedElements.filterIsInstance<Collaboration>()[0])
+                                .`package`.packagedElements.filterIsInstance<MessageEvent>().forEach { event ->
+                                    when (event) {
+                                        is CallEvent -> RSARTELibrary.events.getOrPut(protocol)
+                                        { mutableMapOf() }[event.operation.name] = event
+                                        is AnyReceiveEvent -> RSARTELibrary.events.getOrPut(protocol)
+                                        { mutableMapOf() }[event.name] = event
+                                    }
+                                }
+
+                            RSARTELibrary.events.forEach { (protocol, eventMap) ->
+                                eventMap.forEach { (eventName, event) ->
+                                    RSARTELibrary.signals[RSARTELibrary.getSystemSignal(
+                                        protocol.name,
+                                        eventName
+                                    )] = event
+                                }
+                            }
+                        }
+                    }
+
+            }
+
+        }
+    }
+
 
     override fun getProfile(name: String): Profile {
         return profiles[name]!!
@@ -153,31 +221,75 @@ object RSARTELibrary : RTLibrary {
     }
 
     override fun getSystemProtocol(name: String): RTSystemProtocol {
-        TODO("Not yet implemented")
+        return when (name) {
+            "Log" -> RTLogProtocol
+            "Timing" -> RTTimingProtocol
+            "Frame" -> RTFrameProtocol
+            "Exception" -> RTExceptionProtocol
+            "External" -> RTExternalProtocol
+            else -> throw RuntimeException("Unknown system protocol $name")
+        }
     }
 
-    override fun getSystemSignal(event: RTSystemSignal): Any {
-        TODO("Not yet implemented")
+    override fun getSystemSignal(event: RTSystemSignal): MessageEvent {
+        return RSARTELibrary.signals[event]!!
     }
 
-    override fun getSystemSignal(protocol: RTSystemProtocol, signal: RTSystemSignal): Any {
-        TODO("Not yet implemented")
+    override fun getSystemSignal(protocol: RTSystemProtocol, signal: RTSystemSignal): MessageEvent {
+        return (RSARTELibrary.events[RSARTELibrary.getProtocol(protocol)]!![signal.name])!!
+
     }
 
     override fun getSystemSignal(signal: Any): RTSystemSignal {
-        TODO("Not yet implemented")
+        signal as MessageEvent
+        val eventName = if (signal is CallEvent) signal.operation.name else signal.name
+
+        for (protocol in events.keys)
+            if (events[protocol]!!.containsValue(signal))
+                return getSystemSignal(protocol.name, eventName)
+        throw java.lang.RuntimeException("Unknown system signal $eventName")
     }
 
     override fun getSystemSignal(protocol: String, name: String): RTSystemSignal {
-        TODO("Not yet implemented")
+        return RSARTELibrary.getSystemProtocol(protocol).inputs().find { (it.name == name || it.name == "*")  } as RTSystemSignal
     }
 
-    override fun getType(type: RTType): Any {
-        TODO("Not yet implemented")
+    override fun getType(type: RTType): PrimitiveType {
+        return types[type.name]!!
     }
 
     override fun getType(name: String): RTPrimitiveType {
-        TODO("Not yet implemented")
+        return when (name) {
+            "Boolean" -> RTBoolean
+            "Integer" -> RTInteger
+            "String" -> RTString
+            "Real" -> RTReal
+            "UnlimitedNatural" -> RTUnlimitedNatural
+
+            "char" -> RTChar
+            "double" -> RTDouble
+            "float" -> RTFloat
+            "bool" -> RTBool
+            "int" -> RTInt
+            "int8_t" -> RTInt8
+            "int16_t" -> RTInt16
+            "int32_t" -> RTInt32
+            "int64_t" -> RTInt64
+            "long" -> RTLong
+            "long double" -> RTLongDouble
+            "short" -> RTShort
+            "unsigned char" -> RTUnsignedChar
+            "unsigned int" -> RTUnsignedInt
+            "uint8_t" -> RTUnsignedInt8
+            "uint16_t" -> RTUnsignedInt16
+            "uint32_t" -> RTUnsignedInt32
+            "uint64_t" -> RTUnsignedInt64
+            "unsigned long" -> RTUnsignedLong
+            "unsigned short" -> RTUnsignedShort
+            "wchar_t" -> RTWChar
+            "void" -> RTVoid
+            else -> throw RuntimeException("Unknown system type $name")
+        }
     }
 
     override fun isSystemClass(klass: Any): Boolean {
@@ -189,7 +301,10 @@ object RSARTELibrary : RTLibrary {
     }
 
     override fun isSystemSignal(event: Any): Boolean {
-        TODO("Not yet implemented")
+        for (protocol in events.keys)
+            if (events[protocol]!!.containsValue(event))
+                return true
+        return false
     }
 
     fun isModelRoot(pk: Package) : Boolean {

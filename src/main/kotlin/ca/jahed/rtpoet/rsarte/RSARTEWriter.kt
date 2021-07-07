@@ -1,16 +1,16 @@
 package ca.jahed.rtpoet.rsarte
 
 
-import ca.jahed.rtpoet.rsarte.UMLRTProfile.RTPortStereotype
-import ca.jahed.rtpoet.rsarte.UMLRTProfile.applyStereotype
+import ca.jahed.rtpoet.rsarte.UMLRTProfile.*
 import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary
 import ca.jahed.rtpoet.rsarte.rts.RSARTELibrary.isModelRoot
 import ca.jahed.rtpoet.rtmodel.*
-import ca.jahed.rtpoet.rtmodel.sm.RTStateMachine
+import ca.jahed.rtpoet.rtmodel.rts.RTSystemSignal
+import ca.jahed.rtpoet.rtmodel.sm.*
+import ca.jahed.rtpoet.rtmodel.types.RTType
+import ca.jahed.rtpoet.rtmodel.types.primitivetype.RTPrimitiveType
 import ca.jahed.rtpoet.rtmodel.visitors.RTCachedVisitor
-import org.eclipse.emf.common.util.EList
 import org.eclipse.emf.common.util.URI
-import org.eclipse.emf.ecore.EObject
 import org.eclipse.emf.ecore.resource.Resource
 import org.eclipse.uml2.uml.*
 import java.io.File
@@ -57,20 +57,6 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
 
         resolveStereotypes()
 
-        //todo: add stereotypes
-//        resource.contents.add(UMLFactory.eINSTANCE.createPackage())
-
-
-//        val newCapsule: com.ibm.xtools.uml.rt.core.RTCapsule = RTFactory.CapsuleFactory.createCapsule(umlModel, "NewCapsule")
-//
-//        setCapsuleRTProperties(newCapsule)
-
-
-
-
-        // todo: add XMI Resource to model file
-
-//        XMIResource.OPTION_ENCODING
 
         if (save) {
             resource.save(null)
@@ -118,20 +104,25 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
                     }
                 }
 
-                // todo: differentiate InEvent/OutEvent
                 is CallEvent -> {
-                    val type = (getOriginal(it) as RTProtocol)
-                    val eventStereotype = profile.getMember("InEvent")
-                    (it.applyStereotype(profile.getMember("InEvent") as Stereotype))
+                    val prot = (getOriginal(it.eContainer() as Package) as RTProtocol)
+
+                    when ((getOriginal(it) as RTSignal)) {
+                        in prot.inputSignals -> it.applyStereotype(profile.getMember("InEvent") as Stereotype)
+                        in prot.outputSignals -> it.applyStereotype(profile.getMember("OutEvent") as Stereotype)
+//                        in prot.inOutSignals -> todo: preprocess inOut signals as separate input and output signals
+                    }
+
                 }//"InEvent/OutEvent"
+
 
                 is Package -> {
                     if (isModelRoot(it)) {
                         val defaultLang = default.getMember("DefaultLanguage")
-                        (it.applyStereotype(defaultLang as Stereotype))
+                        it.applyStereotype(defaultLang as Stereotype)
                         it.setValue(defaultLang, "defaultLanguage", "C++")
                     } else {
-                        (it.applyStereotype(profile.getMember("ProtocolContainer") as Stereotype))
+                        it.applyStereotype(profile.getMember("ProtocolContainer") as Stereotype)
                     }
                 }
 
@@ -149,6 +140,7 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
                 is RedefinableElement -> (it.applyStereotype(profile.getMember("RTRedefinableElement") as Stereotype))
 
                 is Message -> (it.applyStereotype(profile.getMember("RTMessage") as Stereotype))
+
 
             }
         }
@@ -179,6 +171,13 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
         umlModel.applyProfile(RSARTELibrary.getProfile("CppPropertySets"))
         umlModel.applyProfile(RSARTELibrary.getProfile("UMLRealTime"))
         umlModel.applyProfile(RSARTELibrary.getProfile("InteractionProfile"))
+
+
+        // todo: add imported packages to RSRATE Models:
+        //  CppPrimitiveDatatypes
+        //  RTClasses
+        //  RTComponents
+//        umlModel.importedPackages.add()
 
 
 //        umlModel.applyProfile(RSARTELibrary.getProfile("Ecore"))
@@ -241,7 +240,6 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
 //        }
 //        model.packagedElements.add(capsuleClass)
 
-        toApplyStereotypes.add(capsuleClass)
 
 
 //        val profile = topPkg!!.getAppliedProfile("UMLRealTime")
@@ -260,17 +258,28 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
         //ownedBehavior
         //Interaction
 
-        capsule.parts.forEach { capsuleClass.ownedAttributes.add(visit(it) as Property) }
+        val attributes = capsule.attributes
+
+        capsule.attributes.forEach { capsuleClass.ownedAttributes.add(visit(it) as Property) }
+
+        capsule.parts.forEach {
+            val part = visit(it) as Property
+            capsuleClass.ownedAttributes.add(part)
+            toApplyStereotypes.add(part)
+        }
+
+        // todo: add to toApplyStereotypes list for each capsule part
+
         capsule.ports.forEach { capsuleClass.ownedAttributes.add(visit(it) as Port) }
         capsule.connectors.forEach { capsuleClass.ownedConnectors.add(visit(it) as Connector)}
         // "let" handles possible null object
         capsule.stateMachine?.let {capsuleClass.ownedBehaviors.add(visit(it) as StateMachine) }
-        /*
-        todo: finish code below
+
+//        todo: finish code below
         capsuleClass.ownedOperations.forEach { capsuleClass.ownedBehaviors.add(it.methods[0]) }
         capsule.attributes.forEach { capsuleClass.ownedAttributes.add(visit(it) as Property) }
         capsule.operations.forEach { capsuleClass.ownedOperations.add(visit(it) as Operation) }
-        */
+
 
 
 //        if (capsule.properties != null) {
@@ -282,8 +291,28 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
 //        val umlrtCapsule = RTCapsule.(model, capsule.name)
 //        umlrtCapsule.base_Class = capsuleClass
 //        resource.contents.add(umlrtCapsule)
+
+        toApplyStereotypes.add(capsuleClass)
+
         return capsuleClass
 
+    }
+
+    override fun visitAttribute(attribute: RTAttribute): Property {
+        val umlProperty = UMLFactory.eINSTANCE.createProperty()
+        umlProperty.name = attribute.name
+        umlProperty.type = visit(attribute.type) as Type
+        umlProperty.upper = attribute.replication
+        umlProperty.lower = attribute.replication
+        umlProperty.visibility = VisibilityKind.get(attribute.visibility.ordinal)
+
+//        if (attribute.properties != null) {
+//            val props = visit(attribute.properties!!) as AttributeProperties
+//            props.base_Property = umlProperty
+//            resource.contents.add(props)
+//        }
+
+        return umlProperty
     }
 
     override fun visitProtocol(protocol: RTProtocol): Any {
@@ -292,57 +321,62 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
 
         val umlPackage = UMLFactory.eINSTANCE.createPackage()
         umlPackage.name = protocol.name
-//
-//        val umlCollaboration = UMLFactory.eINSTANCE.createCollaboration()
-//        umlCollaboration.name = protocol.name
-//        umlPackage.packagedElements.add(umlCollaboration)
-//
-//        val i1 = UMLFactory.eINSTANCE.createInterface()
-//        i1.name = protocol.name
-//        umlPackage.packagedElements.add(i1)
-//
-//        protocol.inputSignals.forEach { i1.ownedOperations.add((visit(it) as CallEvent).operation) }
-//
-//        val i2 = UMLFactory.eINSTANCE.createInterface()
-//        i2.name = protocol.name + "~"
-//        umlPackage.packagedElements.add(i2)
-//
-//        protocol.outputSignals.forEach { i2.ownedOperations.add((visit(it) as CallEvent).operation) }
-//
-//        val i3 = UMLFactory.eINSTANCE.createInterface()
-//        i3.name = protocol.name + "IO"
-//        umlPackage.packagedElements.add(i3)
-//
-//        protocol.inOutSignals.filterNot { it is RTSystemSignal }
-//            .forEach { i3.ownedOperations.add((visit(it) as CallEvent).operation) }
-//
-//        val ir1 = UMLFactory.eINSTANCE.createInterfaceRealization()
-//        ir1.clients.add(umlCollaboration)
-//        ir1.suppliers.add(i1)
-//        ir1.contract = i1
-//        umlCollaboration.interfaceRealizations.add(ir1)
-//
+
+        // PROTOCOL
+        // base object: Collaboration (UML)
+        // stereotype: Protocol (UMLRT)
+
+        // MESSAGE
+        // base object: CallEvent (UML)
+        // stereotypes:
+        //      umlProfile.getMember("InEvent") (UMLRT)
+        //      umlProfile.getMember("OutEvent") (UMLRT)
+
+        val umlProfile = RSARTELibrary.getProfile("UMLRealTime")
+
+        val umlCollaboration = UMLFactory.eINSTANCE.createCollaboration()
+        umlCollaboration.name = protocol.name
+        umlPackage.packagedElements.add(umlCollaboration)
+
+        // Protocol Stereotype
+//        applyStereotype(umlCollaboration, ProtocolStereotype)
+        toApplyStereotypes.add(umlCollaboration)
+        // Protocol Container Stereotype
+        toApplyStereotypes.add(umlPackage)
+//        applyStereotype(umlPackage, ProtocolContainerStereotype)
+
+        val i1 = UMLFactory.eINSTANCE.createInterface()
+        i1.name = protocol.name
+        umlPackage.packagedElements.add(i1)
+
+        protocol.inputSignals.forEach { i1.ownedOperations.add((visit(it) as CallEvent).operation) }
+
+        val i2 = UMLFactory.eINSTANCE.createInterface()
+        i2.name = protocol.name + "~"
+        umlPackage.packagedElements.add(i2)
+
+        protocol.outputSignals.forEach { i2.ownedOperations.add((visit(it) as CallEvent).operation) }
+
+        val ir1 = UMLFactory.eINSTANCE.createInterfaceRealization()
+        ir1.clients.add(umlCollaboration)
+        ir1.suppliers.add(i1)
+        ir1.contract = i1
+        umlCollaboration.interfaceRealizations.add(ir1)
+
 //        val ir2 = UMLFactory.eINSTANCE.createInterfaceRealization()
 //        ir2.clients.add(umlCollaboration)
-//        ir2.suppliers.add(i3)
-//        ir2.contract = i3
 //        umlCollaboration.interfaceRealizations.add(ir2)
-//
-//        val u1 = UMLFactory.eINSTANCE.createUsage()
-//        u1.clients.add(umlCollaboration)
-//        u1.suppliers.add(i2)
-//        umlPackage.packagedElements.add(u1)
-//
-//        val u2 = UMLFactory.eINSTANCE.createUsage()
-//        u2.clients.add(umlCollaboration)
-//        u2.suppliers.add(i3)
-//        umlPackage.packagedElements.add(u2)
-//
-//        protocol.inputSignals.forEach { umlPackage.packagedElements.add(visit(it) as MessageEvent) }
-//        protocol.outputSignals.forEach { umlPackage.packagedElements.add(visit(it) as MessageEvent) }
-//        protocol.inOutSignals.filterNot { it is RTSystemSignal }
-//            .forEach { umlPackage.packagedElements.add(visit(it) as MessageEvent) }
-//        umlPackage.packagedElements.add(visit(protocol.anySignal) as MessageEvent)
+
+        val u1 = UMLFactory.eINSTANCE.createUsage()
+        u1.clients.add(umlCollaboration)
+        u1.suppliers.add(i2)
+        umlPackage.packagedElements.add(u1)
+
+        protocol.inputSignals.forEach { umlPackage.packagedElements.add(visit(it) as MessageEvent) }
+        protocol.outputSignals.forEach { umlPackage.packagedElements.add(visit(it) as MessageEvent) }
+        protocol.inOutSignals.filterNot { it is RTSystemSignal }
+            .forEach { umlPackage.packagedElements.add(visit(it) as MessageEvent) }
+        umlPackage.packagedElements.add(visit(protocol.anySignal) as MessageEvent)
 
 //        val rtp = UMLRealTimeFactory.eINSTANCE.createProtocol()
 //        rtp.base_Collaboration = umlCollaboration
@@ -366,8 +400,60 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
 //        val umlrtProtocolContainer = UMLRealTimeFactory.eINSTANCE.createProtocolContainer()
 //        umlrtProtocolContainer.base_Package = umlPackage
 //        resource.contents.add(umlrtProtocolContainer)
+
         return umlPackage
 
+    }
+
+    override fun visitSignal(signal: RTSignal): MessageEvent {
+        if (signal is RTSystemSignal)
+            return RSARTELibrary.getSystemSignal(signal)
+
+        if (signal.isAny) {
+            val c = UMLFactory.eINSTANCE.createAnyReceiveEvent()
+            c.name = signal.name
+            return c
+        }
+
+        val umlCallEvent = UMLFactory.eINSTANCE.createCallEvent()
+        umlCallEvent.name = signal.name
+
+        umlCallEvent.operation = UMLFactory.eINSTANCE.createOperation()
+        umlCallEvent.operation.name = signal.name
+        signal.parameters.forEach { umlCallEvent.operation.ownedParameters.add(visit(it) as Parameter) }
+
+        toApplyStereotypes.add(umlCallEvent)
+
+        return umlCallEvent
+    }
+
+    override fun visitParameter(param: RTParameter): Parameter {
+        val umlParameter = UMLFactory.eINSTANCE.createParameter()
+        umlParameter.name = param.name
+        umlParameter.type = visit(param.type) as Type
+
+//        umlParameter.lower = param.replication
+//        umlParameter.upper = param.replication
+
+        umlParameter.direction = ParameterDirectionKind.IN_LITERAL
+
+//        if (param.properties != null) {
+//            val props = visit(param.properties!!) as ParameterProperties
+//            props.base_Parameter = umlParameter
+//            resource.contents.add(props)
+//        }
+
+        return umlParameter
+    }
+
+    override fun visitType(type: RTType): Type {
+        return when (type) {
+            is RTPrimitiveType -> RSARTELibrary.getType(type)
+            is RTEnumeration -> visit(type) as Type
+            is RTCapsule -> visit(type) as Type
+            is RTClass -> visit(type) as Type
+            else -> throw RuntimeException("Unexpected type class ${type.javaClass.simpleName}")
+        }
     }
 
     override fun visitPart(part: RTCapsulePart): Any {
@@ -394,18 +480,14 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
         umlPort.name = port.name
         umlPort.setIsBehavior(port.behaviour)
 //        umlPort.setIsConjugated(port.conjugated)
-
-        applyStereotype(umlPort, RTPortStereotype)
 //        PortOperations.setIsConjugated(umlPort, true)
 
 //        val rtPort = RTFactory.RTRedefFactory.redefFactory.getPortRedefinition()
 //        resource.contents.add(rtPort)
 
-
 //        if (port.conjugated) {
 //            PortOperations.setIsConjugated(umlPort, true)
 //        }
-
 
         // todo: apply isConjugate stereotype to appropriate ports
 //        applyStereotype(umlPort, "isConjugate=\"true\"")
@@ -447,6 +529,8 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
         umlConnector.ends.add(umlEnd1)
         umlConnector.ends.add(umlEnd2)
 
+        toApplyStereotypes.add(umlConnector)
+
 //        val umlrtConnector = UMLRealTimeFactory.eINSTANCE.createRTConnector()
 //        umlrtConnector.base_Connector = umlConnector
 //        resource.contents.add(umlrtConnector)
@@ -457,21 +541,84 @@ class RSARTEWriter private constructor(private val resource: Resource) : RTCache
         val umlStateMachine = UMLFactory.eINSTANCE.createStateMachine()
         umlStateMachine.name = statemachine.name
 
-//        val umlRegion = UMLFactory.eINSTANCE.createRegion()
-//        statemachine.states().forEach { umlRegion.subvertices.add(visit(it) as Vertex) }
-//        statemachine.transitions().forEach { umlRegion.transitions.add(visit(it) as Transition) }
-//        umlStateMachine.regions.add(umlRegion)
+        val umlRegion = UMLFactory.eINSTANCE.createRegion()
+        umlRegion.name = "Region1"
+        statemachine.states().forEach { umlRegion.subvertices.add(visit(it) as Vertex) }
+        statemachine.transitions().forEach { umlRegion.transitions.add(visit(it) as Transition) }
+        umlStateMachine.regions.add(umlRegion)
 
-//        val umlrtRegion = UMLRTStateMachinesFactory.eINSTANCE.createRTRegion()
-//        umlrtRegion.base_Region = umlRegion
-//        resource.contents.add(umlrtRegion)
-//
-//        val umlrtStateMachine = UMLRTStateMachinesFactory.eINSTANCE.createRTStateMachine()
-//        umlrtStateMachine.base_StateMachine = umlStateMachine
-//        resource.contents.add(umlrtStateMachine)
         return umlStateMachine
     }
 
+    override fun visitState(state: RTState): State {
+        val umlState = UMLFactory.eINSTANCE.createState()
+        umlState.name = state.name
+
+        umlState.entry = if (state.entryAction != null) visit(state.entryAction!!) as OpaqueBehavior else null
+        umlState.exit = if (state.exitAction != null) visit(state.exitAction!!) as OpaqueBehavior else null
+
+//        resource.contents.add(umlState)
+
+        return umlState
+    }
+
+    override fun visitPseudoState(state: RTPseudoState): Pseudostate {
+        val umlState = UMLFactory.eINSTANCE.createPseudostate()
+        umlState.name = null
+
+        umlState.kind = when (state.kind) {
+            RTPseudoState.Kind.INITIAL -> PseudostateKind.INITIAL_LITERAL
+            RTPseudoState.Kind.HISTORY -> PseudostateKind.SHALLOW_HISTORY_LITERAL
+            RTPseudoState.Kind.JOIN -> PseudostateKind.JOIN_LITERAL
+            RTPseudoState.Kind.JUNCTION -> PseudostateKind.JUNCTION_LITERAL
+            RTPseudoState.Kind.CHOICE -> PseudostateKind.CHOICE_LITERAL
+            RTPseudoState.Kind.ENTRY_POINT -> PseudostateKind.ENTRY_POINT_LITERAL
+            RTPseudoState.Kind.EXIT_POINT -> PseudostateKind.EXIT_POINT_LITERAL
+            else -> throw RuntimeException("Unknown pseudostate kind ${state.kind}")
+        }
+
+        return umlState
+    }
+
+    override fun visitTransition(transition: RTTransition): Transition {
+        val umlTransition = UMLFactory.eINSTANCE.createTransition()
+        umlTransition.name = transition.name
+
+        umlTransition.source = visit(transition.source) as Vertex
+        umlTransition.target = visit(transition.target) as Vertex
+        umlTransition.effect = if (transition.action != null) visit(transition.action!!) as OpaqueBehavior else null
+
+        if (transition.guard != null) {
+            val guard = transition.guard!!
+            val umlExpression = UMLFactory.eINSTANCE.createOpaqueExpression()
+            umlExpression.name = guard.name
+            umlExpression.languages.add(guard.language)
+            umlExpression.bodies.add(guard.body)
+
+            val umlConstraint = UMLFactory.eINSTANCE.createConstraint()
+            umlConstraint.specification = umlExpression
+            umlTransition.guard = umlConstraint
+        }
+
+        transition.triggers.forEach { umlTransition.triggers.add(visit(it) as Trigger) }
+
+        return umlTransition
+    }
+
+    override fun visitTrigger(trigger: RTTrigger): Trigger {
+        val umlTrigger = UMLFactory.eINSTANCE.createTrigger()
+        umlTrigger.event = visit(trigger.signal) as MessageEvent
+        trigger.ports.forEach { umlTrigger.ports.add(visit(it) as Port) }
+        return umlTrigger
+    }
+
+    override fun visitAction(action: RTAction): OpaqueBehavior {
+        val umlOpaqueBehaviour = UMLFactory.eINSTANCE.createOpaqueBehavior()
+        umlOpaqueBehaviour.name = action.name
+        umlOpaqueBehaviour.bodies.add(action.body)
+        umlOpaqueBehaviour.languages.add(action.language)
+        return umlOpaqueBehaviour
+    }
 
 //    private fun setCapsuleRTProperties(newCapsule: com.ibm.xtools.uml.rt.core.RTCapsule) {
 //        val pm = PropertyManager(newCapsule.getUML2Class())
