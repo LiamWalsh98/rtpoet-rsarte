@@ -87,6 +87,12 @@ object RSARTELibrary : RTLibrary {
         pathMap["platform:/plugin/com.ibm.xtools.umldt.rt.cpp.core/libraries/RTComponents.emx"] =
             javaClass.classLoader.getResource("libraries/RTComponents.emx")!!
 
+        pathMap["platform:/plugin/com.ibm.xtools.uml.rt.core/libraries/RTCoreLibrary.emx"] =
+            javaClass.classLoader.getResource("libraries/RTCoreLibrary.emx")!!
+
+
+//        pathMap["platform:/resource/Observer/Observer.emx"] =
+//            javaClass.classLoader.getResource("models/Observer.emx")!!
 
 
 
@@ -121,6 +127,15 @@ object RSARTELibrary : RTLibrary {
         loadClasses(resourceSet)
         loadTypes(resourceSet)
         loadProtocols(resourceSet)
+        loadCallEvents(resourceSet)
+
+        pathMap["platform:/resource/Observer/Observer.emx"] =
+            javaClass.classLoader.getResource("models/Observer.emx")!!
+
+        pathMap.forEach {
+            resourceSet.uriConverter.uriMap[URI.createURI(it.key)] = URI.createURI(it.value.toString())
+        }
+
         // todo: implement the above functions
 
         EcoreUtil.resolveAll(resourceSet)
@@ -155,6 +170,22 @@ object RSARTELibrary : RTLibrary {
                 EcoreUtil.getObjectsByType<Class>(model.packagedElements,
                     UMLPackage.Literals.CLASS).forEach {
                     classes[it.name] = it
+                }
+            }
+        }
+    }
+
+    private fun loadCallEvents(resourceSet: ResourceSet) {
+        resourceSet.resources.forEach { resource ->
+            EcoreUtil.getObjectsByType<Model>(resource.contents,
+                UMLPackage.Literals.MODEL).forEach { model ->
+                EcoreUtil.getObjectsByType<CallEvent>(model.packagedElements,
+                    UMLPackage.Literals.CALL_EVENT).forEach {
+
+                    if(it.name == "rtBound")
+                        RSARTELibrary.signals[RTSystemSignal.rtBound()] = it
+                    else if(it.name == "rtUnbound")
+                        RSARTELibrary.signals[RTSystemSignal.rtUnbound()] = it
                 }
             }
         }
@@ -244,9 +275,15 @@ object RSARTELibrary : RTLibrary {
         signal as MessageEvent
         val eventName = if (signal is CallEvent) signal.operation.name else signal.name
 
-        for (protocol in events.keys)
-            if (events[protocol]!!.containsValue(signal))
-                return getSystemSignal(protocol.name, eventName)
+        for (rtSignal in signals.keys) {
+            val callEvent = signals[rtSignal]
+            if(callEvent == signal)
+                return rtSignal
+        }
+
+//        for (protocol in events.keys)
+//            if (events[protocol]!!.containsValue(signal))
+//                return getSystemSignal(protocol.name, eventName)
         throw java.lang.RuntimeException("Unknown system signal $eventName")
     }
 
@@ -301,10 +338,10 @@ object RSARTELibrary : RTLibrary {
     }
 
     override fun isSystemSignal(event: Any): Boolean {
-        for (protocol in events.keys)
-            if (events[protocol]!!.containsValue(event))
-                return true
-        return false
+//        for (protocol in events.keys)
+//            if (events[protocol]!!.containsValue(event))
+//                return true
+        return signals.containsValue(event)
     }
 
     fun isModelRoot(pk: Package) : Boolean {

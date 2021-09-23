@@ -6,17 +6,19 @@ import ca.jahed.rtpoet.rsarte.utils.RSARTEUtils
 import ca.jahed.rtpoet.rtmodel.*
 import ca.jahed.rtpoet.rtmodel.sm.*
 import ca.jahed.rtpoet.rtmodel.types.RTType
+import com.ibm.xtools.uml.msl.internal.redefinition.RedefUtil.getStereotypeValue
 
 import org.eclipse.emf.common.util.URI
 import org.eclipse.emf.ecore.EClassifier
 import org.eclipse.emf.ecore.EObject
 import org.eclipse.emf.ecore.resource.Resource
+import org.eclipse.emf.ecore.util.EcoreUtil
 import org.eclipse.uml2.uml.*
 
 
 import java.io.File
 
-class RSARTEReader private constructor(private val resource: Resource) {
+class RSARTEReader private constructor(private val resource: Resource, private val topCapsuleName : String?) {
     private val content = mutableMapOf<EClassifier, MutableList<EObject>>()
     private val cache = mutableMapOf<EObject, Any>()
 
@@ -28,24 +30,29 @@ class RSARTEReader private constructor(private val resource: Resource) {
         }
     }
 
-    private constructor(file: String) : this(RSARTELibrary.createResourceSet()
-        .getResource(URI.createFileURI(File(file).absolutePath), true))
+    private constructor(file: String, topCapsuleName: String? = null) : this(RSARTELibrary.createResourceSet()
+        .getResource(URI.createFileURI(File(file).absolutePath), true), topCapsuleName)
 
     companion object {
         @JvmStatic
-        fun read(file: String): RTModel {
-            return RSARTEReader(file).read()
+        fun read(file: String, topCapsuleName: String? = null): RTModel {
+            return RSARTEReader(file, topCapsuleName).read()
         }
 
         @JvmStatic
-        fun read(resource: Resource): RTModel {
-            return RSARTEReader(resource).read()
+        fun read(resource: Resource, topCapsuleName: String? = null): RTModel {
+            return RSARTEReader(resource, topCapsuleName).read()
         }
     }
 
     private fun read(): RTModel {
+        EcoreUtil.resolveAll(resource)
         val model = resource.contents[0] // should be the model package
-        return visit(model!!) as RTModel
+        val rtModel = visit(model!!) as RTModel
+        if (rtModel.top==null && topCapsuleName!=null) {
+            throw RuntimeException("Could not resolve user-supplied top capsule argument name: \"$topCapsuleName\"")
+        }
+        return rtModel
     }
 
     private fun visit(eObj: EObject): Any {
@@ -57,15 +64,14 @@ class RSARTEReader private constructor(private val resource: Resource) {
                 is OpaqueExpression -> visitOpaqueExpression(eObj)
                 is Parameter -> visitParameter(eObj)
                 is Port -> visitPort(eObj)
-                is Vertex -> visitVertex(eObj)
                 is Connector -> visitConnector(eObj)
                 is ConnectorEnd -> visitConnectorEnd(eObj)
 
                 is Transition -> visitTransition(eObj)
+                is Vertex -> visitVertex(eObj) // Encompasses State and Pseudostate
                 is Trigger -> visitTrigger(eObj)
                 is StateMachine -> visitStateMachine(eObj)
                 is Interaction -> visitInteraction(eObj)
-
                 is CallEvent -> visitCallEvent(eObj)
 
                 is Package -> {
@@ -88,10 +94,19 @@ class RSARTEReader private constructor(private val resource: Resource) {
 
                 is PrimitiveType -> visitType(eObj)
 
+                is Enumeration -> visitEnumeration(eObj)
 
                 else -> throw RuntimeException("Unexpected element type ${eObj.eClass().name}")
             }
         }
+    }
+
+    private fun visitEnumeration(enum: Enumeration): RTEnumeration {
+        val builder = RTEnumeration.builder(enum.name)
+        enum.ownedLiterals.forEach {
+            builder.literal(it.name)
+        }
+        return builder.build()
     }
 
     private fun visitType(type: Type): RTType {
@@ -104,7 +119,6 @@ class RSARTEReader private constructor(private val resource: Resource) {
     }
 
     private fun visitCallEvent(event: CallEvent): RTSignal {
-        // todo: !!! maybe handle system signals? (is this actually necessary?)
         if (RSARTELibrary.isSystemSignal(event))
             return RSARTELibrary.getSystemSignal(event)
 
@@ -135,6 +149,12 @@ class RSARTEReader private constructor(private val resource: Resource) {
     }
 
     private fun visitTransition(transition: Transition): RTTransition {
+        // todo: fix this state machine extension
+        val redefinition = transition.redefinedTransition
+        if (redefinition != null) {
+            transition.source=redefinition.source
+            transition.target=redefinition.target
+        }
         val builder = RTTransition.builder(visit(transition.source) as RTGenericState,
             visit(transition.target) as RTGenericState)
 
@@ -166,7 +186,6 @@ class RSARTEReader private constructor(private val resource: Resource) {
             return when (vertex.kind) {
                 PseudostateKind.INITIAL_LITERAL -> RTPseudoState.initial(vertex.name).build()
                 PseudostateKind.CHOICE_LITERAL -> RTPseudoState.choice(vertex.name).build()
-//                PseudostateKind.SHALLOW_HISTORY_LITERAL -> RTPseudoState.history(vertex.name).build()
                 PseudostateKind.JOIN_LITERAL -> RTPseudoState.join(vertex.name).build()
                 PseudostateKind.JUNCTION_LITERAL -> RTPseudoState.junction(vertex.name).build()
                 PseudostateKind.ENTRY_POINT_LITERAL -> RTPseudoState.entryPoint(vertex.name).build()
@@ -206,20 +225,11 @@ class RSARTEReader private constructor(private val resource: Resource) {
         val builder = RTStateMachine.builder()
         stateMachine.regions[0].subvertices.forEach { builder.state(visit(it) as RTGenericState) }
         stateMachine.regions[0].transitions.forEach { builder.transition(visit(it) as RTTransition) }
-
         val build = builder.build()
         build.name = stateMachine.name
 
         return build
     }
-
-//    private fun visitState(state : State) : RTState {
-//        val builder = RTStateBuilder(state.name, )
-//    }
-//
-//    private fun visitPseudostate(state : Pseudostate) : RTPseudoState {
-//
-//    }
 
     private fun visitCapsulePart(part: Property): RTCapsulePart {
         val builder = RTCapsulePart.builder(part.name, visit(part.type) as RTCapsule)
@@ -259,15 +269,19 @@ class RSARTEReader private constructor(private val resource: Resource) {
     }
 
     private fun visitParameter(parameter: Parameter): RTParameter {
+        val type : RTType? = if (parameter.type == null) {
+            val typeName = getStereotypeValue(
+                parameter,
+                null,
+                "CppPropertySets::GeneralParameterProperties",
+                "nativeType"
+            )
+            RTType(typeName as String)
+        } else {
+            visit(parameter.type) as RTType
+        }
 
-//        val builder : RTParameterBuilder
-//        // todo: handle null types of system protocols
-//        if (parameter.type == null){
-//            builder = RTParameter.builder(parameter.name, RTNullType())
-//                .replication(parameter.upper)
-//        }
-//        else{
-        val builder = RTParameter.builder(parameter.name, visit(parameter.type) as RTType)
+        val builder = RTParameter.builder(parameter.name, type!!)
                 .replication(parameter.upper)
 //        }
         return builder.build()
@@ -289,7 +303,7 @@ class RSARTEReader private constructor(private val resource: Resource) {
         operation.methods.forEach { builder.action(visit(it) as RTAction) }
         operation.ownedParameters.forEach {
             when (it.direction) {
-                ParameterDirectionKind.RETURN_LITERAL -> builder.ret(visit(it) as RTParameter)
+                ParameterDirectionKind.RETURN_LITERAL -> if (it.type!=null) builder.ret(visit(it) as RTParameter)
                 else -> builder.parameter(visit(it) as RTParameter)
             }
         }
@@ -298,7 +312,18 @@ class RSARTEReader private constructor(private val resource: Resource) {
 
     private fun visitAttribute(property: Property): RTAttribute {
         // Pure UML Objects
-        val builder = RTAttribute.builder(property.name, visit(property.type) as RTType).replication(property.upper)
+        val type : RTType? = if (property.type == null) {
+            val typeName = getStereotypeValue(
+                property,
+                null,
+                "CppPropertySets::GeneralAttributeProperties",
+                "nativeType"
+            )
+            RTType(typeName as String)
+        } else {
+            visit(property.type) as RTType
+        }
+        val builder = RTAttribute.builder(property.name, type!!).replication(property.upper)
         when (property.visibility) {
             VisibilityKind.PUBLIC_LITERAL -> builder.publicVisibility()
             VisibilityKind.PRIVATE_LITERAL -> builder.privateVisibility()
@@ -364,25 +389,30 @@ class RSARTEReader private constructor(private val resource: Resource) {
     private fun visitClass(klass: Class): RTClass {
         // for capsule parts are of type "class"
         val builder = RTClass.builder(klass.name)
+        val rtClass = builder.build();
+        cache.put(klass,rtClass)
+
         klass.ownedOperations.forEach {
-            builder.operation(visit(it) as RTOperation)
+            rtClass.operations.add(visit(it) as RTOperation)
         }
         klass.ownedAttributes.forEach {
-            builder.attribute(visit(it) as RTAttribute)
+            rtClass.attributes.add(visit(it) as RTAttribute)
         }
-        return builder.build()
+        return rtClass
     }
 
     private fun visitModel(pkg: Package): RTModel {
         val builder = RTModel.builder(pkg.name)
 
-        // todo: specify which capsule is "top"
-
         pkg.packagedElements.forEach {
             when (it) {
                 is Class ->
-                    if (UMLRTProfile.isCapsule(it))
-                        builder.capsule(visit(it) as RTCapsule)
+                    if (UMLRTProfile.isCapsule(it)) {
+                        if (it.name == topCapsuleName)
+                            builder.top(visit(it) as RTCapsule)
+                        else
+                            builder.capsule(visit(it) as RTCapsule)
+                    }
                     else builder.klass(visit(it) as RTClass)
                 is Package -> if (UMLRTProfile.isProtocolContainer(it)) builder.protocol(visit(it) as RTProtocol)
                     else builder.pkg(visit(it) as RTPackage)
